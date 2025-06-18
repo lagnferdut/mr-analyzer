@@ -16,19 +16,11 @@ const App: React.FC = () => {
     const [apiKeyExists, setApiKeyExists] = useState<boolean>(false);
 
     useEffect(() => {
-        // This check runs in the browser. For 'process.env.API_KEY' to be available here,
-        // it typically needs to be made available by your hosting platform (e.g., Railway)
-        // to the client-side code, often during a build/deployment process.
-        const keyFromEnv = process.env.API_KEY;
-
-        if (keyFromEnv && keyFromEnv.trim() !== "") {
+        if (process.env.API_KEY) {
             setApiKeyExists(true);
-            // Clear any initial API key related error if key is found
-             setError(prevError => (prevError && (prevError.includes("API Key is not configured") || prevError.includes("API Key is not configured"))) ? null : prevError);
         } else {
-            console.warn("API_KEY environment variable is not set or not accessible in the frontend JavaScript environment. If deploying to a platform like Railway, ensure the API_KEY variable is correctly set in your service's environment variables AND that your build/deployment process makes it available to the client-side code (e.g., as process.env.API_KEY).");
-            setError("API Key is not configured for use in the browser. Please ensure the API_KEY environment variable is set in your deployment platform (e.g., Railway) and made available to the frontend application.");
-            setApiKeyExists(false);
+            console.warn("API_KEY environment variable is not set. The app may not function correctly.");
+            setError("Klucz API nie jest skonfigurowany. Upewnij się, że zmienna środowiskowa API_KEY jest ustawiona.");
         }
     }, []);
 
@@ -42,19 +34,19 @@ const App: React.FC = () => {
                 setError(null);
             } else {
                 setSelectedFile(null);
-                setError("Invalid file type. Please upload a PDF, CSV, or Excel file.");
+                setError(`Nieprawidłowy typ pliku: ${file.type || 'nieznany'}. Proszę przesłać plik PDF, CSV lub Excel.`);
             }
         }
     };
 
     const handleAnalyze = async () => {
         if (!selectedFile) {
-            setError("Please select a file first.");
+            setError("Proszę najpierw wybrać plik.");
             return;
         }
 
-        if (!apiKeyExists) {
-            setError("API Key is not configured or available in the browser. Cannot perform analysis. Please check your application's API key setup and deployment configuration on Railway.");
+        if (!process.env.API_KEY) {
+            setError("Klucz API nie jest skonfigurowany. Nie można przeprowadzić analizy.");
             setIsLoading(false);
             return;
         }
@@ -63,81 +55,107 @@ const App: React.FC = () => {
         setError(null);
         setAnalysisResult(null);
 
-        try {
-            // apiKeyExists is true, so we assume process.env.API_KEY is populated.
-            // The Gemini SDK guidelines require using process.env.API_KEY directly.
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            try {
+                const fileDataUrl = reader.result as string;
+                const base64EncodedString = fileDataUrl.substring(fileDataUrl.indexOf(',') + 1);
 
-            const fileName = selectedFile.name;
-            const prompt = `
-You are a marketing analysis expert.
-Analyze a typical marketing report. Assume the report shows mixed results: some campaigns are successful, but overall engagement is declining.
-The report is named: "${fileName}".
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-Provide your analysis in JSON format. The JSON object must have two keys: "insights" and "recommendations".
-Each key must have a value that is an array of strings, where each string is a bullet point.
-For example:
+                const filePart = {
+                    inlineData: {
+                        mimeType: selectedFile.type || 'application/octet-stream',
+                        data: base64EncodedString,
+                    },
+                };
+
+                const textPart = {
+                    text: `
+Jesteś ekspertem od analizy marketingowej.
+Przeanalizuj dostarczone dane z raportu marketingowego. Nazwa pliku to "${selectedFile.name}".
+Zawartość pliku jest dostarczona w części 'inlineData'.
+Na podstawie zawartości przesłanego pliku, przedstaw swoją analizę w formacie JSON.
+Proszę o przygotowanie analizy w języku polskim.
+
+Obiekt JSON musi mieć dwa klucze: "insights" (wnioski) oraz "recommendations" (rekomendacje).
+Każdy klucz musi mieć wartość będącą tablicą ciągów znaków, gdzie każdy ciąg znaków to punkt wypunktowania.
+Na przykład:
 {
   "insights": [
-    "Insight 1 regarding typical marketing data.",
-    "Insight 2 regarding typical marketing data."
+    "Wniosek 1 na podstawie dostarczonej treści pliku.",
+    "Wniosek 2 na podstawie dostarczonej treści pliku."
   ],
   "recommendations": [
-    "Recommendation 1 based on typical insights.",
-    "Recommendation 2 based on typical insights."
+    "Rekomendacja 1 na podstawie dostarczonej treści pliku i wniosków.",
+    "Rekomendacja 2 na podstawie dostarczonej treści pliku i wniosków."
   ]
 }
-Ensure the output is only the JSON object, without any surrounding text or markdown.`;
+Upewnij się, że dane wyjściowe to wyłącznie obiekt JSON, bez otaczającego tekstu czy formatowania markdown.
+Wszystkie ciągi znaków (stringi) w tablicach "insights" i "recommendations" muszą być w języku polskim.
+Jeśli zawartość pliku jest niejasna, niewystarczająca do analizy lub wydaje się uszkodzona, stwierdź, że analiza jest ograniczona przez jakość dostarczonych danych lub że plik nie mógł zostać w pełni zinterpretowany, zamiast wymyślać informacje.
+Skup się wyłącznie na informacjach możliwych do uzyskania z dostarczonego pliku.
+Nie wymyślaj danych.
+`
+                };
 
-            const response: GenerateContentResponse = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-04-17",
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                }
-            });
+                const response: GenerateContentResponse = await ai.models.generateContent({
+                    model: "gemini-2.5-flash-preview-04-17",
+                    contents: { parts: [filePart, textPart] },
+                    config: {
+                        responseMimeType: "application/json",
+                    }
+                });
 
-            let jsonStr = response.text.trim();
-            const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
-            const match = jsonStr.match(fenceRegex);
-            if (match && match[2]) {
-                jsonStr = match[2].trim();
-            }
-            
-            try {
-                const parsedData: MarketingAnalysis = JSON.parse(jsonStr);
-                if (parsedData && Array.isArray(parsedData.insights) && Array.isArray(parsedData.recommendations)) {
-                   setAnalysisResult(parsedData);
-                } else {
-                    throw new Error("Invalid JSON structure received from API.");
+                let jsonStr = response.text.trim();
+                const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+                const match = jsonStr.match(fenceRegex);
+                if (match && match[2]) {
+                    jsonStr = match[2].trim();
                 }
-            } catch (e) {
-                console.error("Failed to parse JSON response:", e, "\nReceived string:", jsonStr);
-                setError(`Failed to parse analysis data. Raw response: ${jsonStr.substring(0, 200)}...`);
+                
+                try {
+                    const parsedData: MarketingAnalysis = JSON.parse(jsonStr);
+                    if (parsedData && Array.isArray(parsedData.insights) && Array.isArray(parsedData.recommendations)) {
+                       setAnalysisResult(parsedData);
+                    } else {
+                        throw new Error("Nieprawidłowa struktura JSON otrzymana z API. Upewnij się, że 'insights' i 'recommendations' są tablicami.");
+                    }
+                } catch (e) {
+                    console.error("Błąd parsowania odpowiedzi JSON:", e, "\nOtrzymany ciąg:", jsonStr);
+                    setError(`Nie udało się przetworzyć danych analitycznych. Odpowiedź AI może nie być w oczekiwanym formacie JSON. Surowa odpowiedź: ${jsonStr.substring(0, 300)}...`);
+                    setAnalysisResult(null);
+                }
+
+            } catch (err) {
+                console.error("Błąd podczas analizy:", err);
+                setError(err instanceof Error ? err.message : "Wystąpił nieznany błąd podczas analizy.");
                 setAnalysisResult(null);
+            } finally {
+                setIsLoading(false);
             }
+        };
 
-        } catch (err) {
-            console.error("Error during analysis:", err);
-            setError(err instanceof Error ? err.message : "An unknown error occurred during analysis.");
-            setAnalysisResult(null);
-        } finally {
+        reader.onerror = () => {
+            setError("Nie udało się odczytać pliku.");
             setIsLoading(false);
-        }
+        };
+        
+        reader.readAsDataURL(selectedFile);
     };
 
     return (
         <>
             <header>
-                <h1>Marketing Report Analyzer</h1>
+                <h1>Analizator Raportów Marketingowych</h1>
             </header>
             <main>
                 <section aria-labelledby="file-upload-heading">
-                    <h2 id="file-upload-heading" className="sr-only">File Upload</h2>
+                    <h2 id="file-upload-heading" className="sr-only">Przesyłanie pliku</h2>
                     <label htmlFor="file-upload" className="file-input-container">
-                         <span className="file-input-label">Click to upload or drag and drop your report</span>
+                         <span className="file-input-label">Kliknij, aby przesłać lub przeciągnij i upuść swój raport</span>
                          <span className="file-name" aria-live="polite">
-                            {selectedFile ? selectedFile.name : "Supported files: PDF, CSV, Excel"}
+                            {selectedFile ? selectedFile.name : "Obsługiwane pliki: PDF, CSV, Excel"}
                          </span>
                     </label>
                     <input
@@ -147,44 +165,44 @@ Ensure the output is only the JSON object, without any surrounding text or markd
                         onChange={handleFileChange}
                         aria-describedby="file-type-info"
                     />
-                     <p id="file-type-info" className="sr-only">Supported file types are PDF, CSV, XLS, and XLSX.</p>
+                     <p id="file-type-info" className="sr-only">Obsługiwane typy plików to PDF, CSV, XLS i XLSX.</p>
 
                     <button onClick={handleAnalyze} disabled={!selectedFile || isLoading || !apiKeyExists}>
-                        {isLoading ? "Analyzing..." : "Analyze Report"}
+                        {isLoading ? "Analizowanie..." : "Analizuj Raport"}
                     </button>
                 </section>
 
-                {isLoading && <div className="loading-indicator" aria-busy="true">Loading analysis...</div>}
+                {isLoading && <div className="loading-indicator" aria-busy="true" role="status">Ładowanie analizy...</div>}
                 {error && <div className="error-message" role="alert">{error}</div>}
 
                 {analysisResult && (
                     <div className="results-container">
                         <section className="results-section" aria-labelledby="insights-heading">
-                            <h2 id="insights-heading">Insights</h2>
+                            <h2 id="insights-heading">Wnioski</h2>
                             {analysisResult.insights.length > 0 ? (
                                 <ul>
                                     {analysisResult.insights.map((insight, index) => (
                                         <li key={`insight-${index}`}>{insight}</li>
                                     ))}
                                 </ul>
-                            ) : <p>No insights generated.</p>}
+                            ) : <p>Brak wygenerowanych wniosków lub nie są dostępne w raporcie.</p>}
                         </section>
 
                         <section className="results-section" aria-labelledby="recommendations-heading">
-                            <h2 id="recommendations-heading">Recommendations</h2>
+                            <h2 id="recommendations-heading">Rekomendacje</h2>
                              {analysisResult.recommendations.length > 0 ? (
                                 <ul>
                                     {analysisResult.recommendations.map((rec, index) => (
                                         <li key={`recommendation-${index}`}>{rec}</li>
                                     ))}
                                 </ul>
-                            ) : <p>No recommendations generated.</p>}
+                            ) : <p>Brak wygenerowanych rekomendacji lub nie są dostępne w raporcie.</p>}
                         </section>
                     </div>
                 )}
             </main>
             <footer>
-                <p>&copy; {new Date().getFullYear()} Marketing Analyzer AI. Powered by Gemini.</p>
+                <p>&copy; {new Date().getFullYear()} Analizator Marketingowy AI. Wspierane przez Gemini.</p>
                  <style>{`
                     .sr-only {
                         position: absolute;
@@ -208,5 +226,6 @@ if (container) {
     const root = ReactDOM.createRoot(container);
     root.render(<React.StrictMode><App /></React.StrictMode>);
 } else {
-    console.error("Root element not found");
+    console.error("Nie znaleziono elementu root");
 }
+    
