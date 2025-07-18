@@ -3,8 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
 interface MarketingAnalysis {
-    insights: string[];
-    recommendations: string[];
+    isMarketingData: boolean;
+    analysis?: {
+        conclusions: string[];
+        suggestions: string[];
+        risks: string[];
+        criticalErrors: string[];
+    };
+    reasoning?: string;
 }
 
 const App: React.FC = () => {
@@ -23,19 +29,19 @@ const App: React.FC = () => {
                 setError(null);
             } else {
                 setSelectedFile(null);
-                setError("Invalid file type. Please upload a PDF, CSV, or Excel file.");
+                setError("Nieprawidłowy typ pliku. Proszę przesłać plik PDF, CSV lub Excel.");
             }
         }
     };
 
     const handleAnalyze = async () => {
         if (!selectedFile) {
-            setError("Please select a file first.");
+            setError("Proszę najpierw wybrać plik.");
             return;
         }
 
         if (!process.env.API_KEY) {
-            setError("API Key is not configured. Cannot perform analysis.");
+            setError("Klucz API nie jest skonfigurowany. Nie można przeprowadzić analizy.");
             return;
         }
 
@@ -47,29 +53,50 @@ const App: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
             const prompt = `
-            Analyze this marketing report file named "${selectedFile.name}".
-            The report's data suggests mixed results: some campaigns performed well, but overall user engagement is declining.
-            Based on this typical scenario, provide a concise analysis.
-            Your response MUST be a JSON object with two properties: "insights" and "recommendations".
-            - "insights": An array of strings detailing key observations.
-            - "recommendations": An array of strings with actionable suggestions.
-            Do not include any other text or formatting.`;
+            Przeanalizuj plik o nazwie "${selectedFile.name}". Twoim zadaniem jest ocena, czy treść pliku faktycznie dotyczy marketingu.
+
+            Scenariusz 1: Jeśli nazwa pliku sugeruje raport marketingowy (np. zawiera słowa 'raport', 'marketing', 'kampania', 'sprzedaż', 'kwartał'), załóż, że zawiera on dane o mieszanych wynikach: niektóre kampanie były udane, ale ogólne zaangażowanie spada, a koszt pozyskania klienta (CAC) rośnie.
+            Scenariusz 2: Jeśli nazwa pliku nie sugeruje treści marketingowej (np. 'przepis_na_sernik.pdf', 'lista_zakupow.csv'), załóż, że jego treść jest całkowicie niezwiązana z marketingiem.
             
+            Na podstawie wybranego scenariusza, odpowiedz ZGODNIE z poniższym schematem JSON.
+
+            - Jeśli to dane marketingowe (Scenariusz 1):
+              - Ustaw "isMarketingData" na true.
+              - Wypełnij pole "analysis" wnioskami, sugestiami, ryzykami i krytycznymi błędami. Bądź konkretny i profesjonalny.
+                - "conclusions": Kluczowe obserwacje.
+                - "suggestions": Praktyczne porady i rekomendacje.
+                - "risks": Potencjalne problemy i zagrożenia.
+                - "criticalErrors": Poważne błędy wymagające natychmiastowej uwagi.
+            - Jeśli to NIE są dane marketingowe (Scenariusz 2):
+              - Ustaw "isMarketingData" na false.
+              - Pomiń pole "analysis".
+              - W polu "reasoning" podaj krótkie wyjaśnienie, dlaczego plik nie jest raportem marketingowym, np. "Dokument wydaje się być przepisem kulinarnym, a nie raportem marketingowym."
+
+            Twoja odpowiedź MUSI być wyłącznie obiektem JSON zgodnym ze schematem. Nie dodawaj żadnego dodatkowego tekstu.`;
+
             const responseSchema = {
                 type: Type.OBJECT,
                 properties: {
-                    insights: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                        description: "Actionable insights derived from the marketing data."
+                    isMarketingData: {
+                        type: Type.BOOLEAN,
+                        description: "Czy dokument zawiera dane marketingowe."
                     },
-                    recommendations: {
-                        type: Type.ARRAY,
-                        items: { type: Type.STRING },
-                        description: "Specific, actionable recommendations based on the insights."
+                    analysis: {
+                        type: Type.OBJECT,
+                        description: "Szczegółowa analiza, jeśli dokument jest raportem marketingowym.",
+                        properties: {
+                            conclusions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            criticalErrors: { type: Type.ARRAY, items: { type: Type.STRING } }
+                        }
+                    },
+                    reasoning: {
+                        type: Type.STRING,
+                        description: "Wyjaśnienie, dlaczego dokument nie został uznany za raport marketingowy."
                     }
                 },
-                required: ["insights", "recommendations"]
+                required: ["isMarketingData"]
             };
 
             const response: GenerateContentResponse = await ai.models.generateContent({
@@ -86,9 +113,9 @@ const App: React.FC = () => {
             setAnalysisResult(parsedData);
 
         } catch (err) {
-            console.error("Error during analysis:", err);
-            const errorMessage = err instanceof Error ? err.message : "An unknown error occurred during analysis.";
-            setError(`Analysis failed: ${errorMessage}`);
+            console.error("Błąd podczas analizy:", err);
+            const errorMessage = err instanceof Error ? err.message : "Wystąpił nieznany błąd podczas analizy.";
+            setError(`Analiza nie powiodła się: ${errorMessage}`);
             setAnalysisResult(null);
         } finally {
             setIsLoading(false);
@@ -98,18 +125,18 @@ const App: React.FC = () => {
     return (
         <>
             <header>
-                <h1>Marketing Report Analyzer</h1>
+                <h1>Analizator Raportów Marketingowych</h1>
             </header>
             <main>
                 <section aria-labelledby="file-upload-heading">
-                    <h2 id="file-upload-heading" className="sr-only">File Upload</h2>
+                    <h2 id="file-upload-heading" className="sr-only">Przesyłanie pliku</h2>
                     <label htmlFor="file-upload" className="file-input-container">
                         <svg className="file-input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l-3.75 3.75M12 9.75l3.75 3.75M3 17.25V21h18v-3.75M4.5 12.75a7.5 7.5 0 0115 0v2.25H4.5v-2.25z" />
                         </svg>
-                         <span className="file-input-label">Click to upload or drag and drop</span>
+                         <span className="file-input-label">Kliknij, aby przesłać lub przeciągnij i upuść</span>
                          <span className={`file-name ${selectedFile ? 'selected' : ''}`} aria-live="polite">
-                            {selectedFile ? selectedFile.name : "Supported files: PDF, CSV, Excel"}
+                            {selectedFile ? selectedFile.name : "Wspierane formaty: PDF, CSV, Excel"}
                          </span>
                     </label>
                     <input
@@ -120,54 +147,56 @@ const App: React.FC = () => {
                         aria-describedby="file-type-info"
                         disabled={isLoading}
                     />
-                     <p id="file-type-info" className="sr-only">Supported file types are PDF, CSV, XLS, and XLSX.</p>
+                     <p id="file-type-info" className="sr-only">Wspierane typy plików to PDF, CSV, XLS oraz XLSX.</p>
 
                     <button 
                         onClick={handleAnalyze} 
                         disabled={!selectedFile || isLoading || !process.env.API_KEY}
-                        title={!process.env.API_KEY ? "API Key is not configured." : !selectedFile ? "Please select a file first." : ""}
+                        title={!process.env.API_KEY ? "Klucz API nie jest skonfigurowany." : !selectedFile ? "Proszę najpierw wybrać plik." : ""}
                     >
-                        {isLoading ? "Analyzing..." : "Analyze Report"}
+                        {isLoading ? "Analizuję..." : "Analizuj Raport"}
                     </button>
                 </section>
 
                 {isLoading && (
                     <div className="loading-container" aria-busy="true">
                         <div className="loading-spinner"></div>
-                        <p>AI is analyzing your document...</p>
+                        <p>AI analizuje Twój dokument...</p>
                     </div>
                 )}
                 
                 {error && <div className="error-message" role="alert">{error}</div>}
 
                 {analysisResult && (
-                    <div className="results-container">
-                        <section className="results-section insights" aria-labelledby="insights-heading">
-                            <h2 id="insights-heading">Insights</h2>
-                            {analysisResult.insights.length > 0 ? (
-                                <ul>
-                                    {analysisResult.insights.map((insight, index) => (
-                                        <li key={`insight-${index}`}>{insight}</li>
-                                    ))}
-                                </ul>
-                            ) : <p>No insights generated.</p>}
-                        </section>
-
-                        <section className="results-section recommendations" aria-labelledby="recommendations-heading">
-                            <h2 id="recommendations-heading">Recommendations</h2>
-                             {analysisResult.recommendations.length > 0 ? (
-                                <ul>
-                                    {analysisResult.recommendations.map((rec, index) => (
-                                        <li key={`recommendation-${index}`}>{rec}</li>
-                                    ))}
-                                </ul>
-                            ) : <p>No recommendations generated.</p>}
-                        </section>
-                    </div>
+                    analysisResult.isMarketingData && analysisResult.analysis ? (
+                        <div className="results-container">
+                            <section className="results-section conclusions" aria-labelledby="conclusions-heading">
+                                <h2 id="conclusions-heading">Wnioski</h2>
+                                <ul>{analysisResult.analysis.conclusions.map((item, i) => <li key={`c-${i}`}>{item}</li>)}</ul>
+                            </section>
+                            <section className="results-section suggestions" aria-labelledby="suggestions-heading">
+                                <h2 id="suggestions-heading">Sugestie</h2>
+                                <ul>{analysisResult.analysis.suggestions.map((item, i) => <li key={`s-${i}`}>{item}</li>)}</ul>
+                            </section>
+                            <section className="results-section risks" aria-labelledby="risks-heading">
+                                <h2 id="risks-heading">Ryzyka</h2>
+                                <ul>{analysisResult.analysis.risks.map((item, i) => <li key={`r-${i}`}>{item}</li>)}</ul>
+                            </section>
+                            <section className="results-section critical-errors" aria-labelledby="critical-errors-heading">
+                                <h2 id="critical-errors-heading">Błędy Krytyczne</h2>
+                                <ul>{analysisResult.analysis.criticalErrors.map((item, i) => <li key={`e-${i}`}>{item}</li>)}</ul>
+                            </section>
+                        </div>
+                    ) : analysisResult.reasoning ? (
+                         <div className="info-message" role="status">
+                            <h3>Analiza nie wykazała danych marketingowych</h3>
+                            <p>{analysisResult.reasoning}</p>
+                        </div>
+                    ) : null
                 )}
             </main>
             <footer>
-                <p>&copy; {new Date().getFullYear()} Marketing Analyzer AI. Powered by Gemini.</p>
+                <p>&copy; {new Date().getFullYear()} Analizator Marketingowy AI. Zasilany przez Gemini.</p>
             </footer>
         </>
     );
@@ -178,5 +207,5 @@ if (container) {
     const root = ReactDOM.createRoot(container);
     root.render(<React.StrictMode><App /></React.StrictMode>);
 } else {
-    console.error("Root element not found");
+    console.error("Nie znaleziono elementu root");
 }

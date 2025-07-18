@@ -1,6 +1,6 @@
 {
-  "description": "A web application to analyze marketing reports (PDF, CSV, Excel) using Gemini, providing insights and recommendations.",
+  "description": "Aplikacja internetowa do analizy raportów marketingowych (PDF, CSV, Excel) przy użyciu Gemini, dostarczająca wnioski, sugestie, ryzyka i błędy krytyczne.",
   "prompt": "",
   "requestFramePermissions": [],
-  "name": "Marketingowy analizator raportów - live 1"
+  "name": "Analizator Raportów Marketingowych"
 }
