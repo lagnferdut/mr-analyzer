@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type, Part } from "@google/genai";
 
 interface MarketingAnalysis {
     isMarketingData: boolean;
@@ -12,6 +12,22 @@ interface MarketingAnalysis {
     };
     reasoning?: string;
 }
+
+// Helper function to convert a File object to a GenAI Part
+const fileToGenerativePart = async (file: File): Promise<Part> => {
+    const base64EncodedDataPromise = new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+    });
+    return {
+        inlineData: {
+            data: await base64EncodedDataPromise,
+            mimeType: file.type,
+        },
+    };
+};
+
 
 const App: React.FC = () => {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -51,28 +67,30 @@ const App: React.FC = () => {
 
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-            const prompt = `
-            Przeanalizuj plik o nazwie "${selectedFile.name}". Twoim zadaniem jest ocena, czy treść pliku faktycznie dotyczy marketingu.
-
-            Scenariusz 1: Jeśli nazwa pliku sugeruje raport marketingowy (np. zawiera słowa 'raport', 'marketing', 'kampania', 'sprzedaż', 'kwartał'), załóż, że zawiera on dane o mieszanych wynikach: niektóre kampanie były udane, ale ogólne zaangażowanie spada, a koszt pozyskania klienta (CAC) rośnie.
-            Scenariusz 2: Jeśli nazwa pliku nie sugeruje treści marketingowej (np. 'przepis_na_sernik.pdf', 'lista_zakupow.csv'), załóż, że jego treść jest całkowicie niezwiązana z marketingiem.
             
-            Na podstawie wybranego scenariusza, odpowiedz ZGODNIE z poniższym schematem JSON.
+            const filePart = await fileToGenerativePart(selectedFile);
+            
+            const prompt = `
+            Twoim zadaniem jest wcielenie się w rolę doświadczonego analityka marketingowego. Otrzymujesz dokument do analizy.
+            
+            1.  **Ocena wstępna:** Najpierw oceń, czy załączony dokument zawiera dane, które można analizować pod kątem marketingu (np. raporty sprzedaży, wyniki kampanii, dane o ruchu na stronie, analizy social media).
+            2.  **Głęboka analiza (jeśli dotyczy):** Jeśli dokument zawiera dane marketingowe, przeanalizuj je dogłębnie. Szukaj trendów, wzorców, sukcesów i porażek.
+            3.  **Raportowanie:** Na podstawie analizy, wygeneruj odpowiedź JSON zgodnie z poniższym schematem.
 
-            - Jeśli to dane marketingowe (Scenariusz 1):
-              - Ustaw "isMarketingData" na true.
-              - Wypełnij pole "analysis" wnioskami, sugestiami, ryzykami i krytycznymi błędami. Bądź konkretny i profesjonalny.
-                - "conclusions": Kluczowe obserwacje.
-                - "suggestions": Praktyczne porady i rekomendacje.
-                - "risks": Potencjalne problemy i zagrożenia.
-                - "criticalErrors": Poważne błędy wymagające natychmiastowej uwagi.
-            - Jeśli to NIE są dane marketingowe (Scenariusz 2):
-              - Ustaw "isMarketingData" na false.
-              - Pomiń pole "analysis".
-              - W polu "reasoning" podaj krótkie wyjaśnienie, dlaczego plik nie jest raportem marketingowym, np. "Dokument wydaje się być przepisem kulinarnym, a nie raportem marketingowym."
+            **Schemat odpowiedzi JSON:**
 
-            Twoja odpowiedź MUSI być wyłącznie obiektem JSON zgodnym ze schematem. Nie dodawaj żadnego dodatkowego tekstu.`;
+            -   **Jeśli dokument zawiera dane marketingowe:**
+                -   \`isMarketingData\`: ustaw na \`true\`.
+                -   \`analysis\`: wypełnij obiekt analizy:
+                    -   \`conclusions\`: Podaj kluczowe, oparte na danych wnioski (np. "Kampania X przyniosła wzrost konwersji o 15%, ale kanał Y ma niski wskaźnik zaangażowania.").
+                    -   \`suggestions\`: Zaproponuj konkretne, praktyczne działania (np. "Zwiększyć budżet na kampanię X o 20%", "Zoptymalizować treści dla kanału Y, aby poprawić zaangażowanie.").
+                    -   \`risks\`: Zidentyfikuj potencjalne ryzyka (np. "Rosnący koszt pozyskania klienta (CAC) może zagrozić rentowności.", "Uzależnienie od jednego kanału marketingowego jest ryzykowne.").
+                    -   \`criticalErrors\`: Wskaż błędy, które wymagają natychmiastowej interwencji (np. "Błąd śledzenia konwersji na stronie docelowej powoduje utratę danych.", "Wysoki wskaźnik odrzuceń na stronie cennika wskazuje na problemy z UX lub ofertą.").
+            -   **Jeśli dokument NIE zawiera danych marketingowych:**
+                -   \`isMarketingData\`: ustaw na \`false\`.
+                -   \`reasoning\`: Podaj zwięzłe wyjaśnienie, dlaczego dokument nie nadaje się do analizy (np. "Dokument jest listą zakupów i nie zawiera danych marketingowych.", "To jest plik systemowy bez treści analitycznej.").
+
+            Twoja odpowiedź MUSI być wyłącznie obiektem JSON zgodnym ze schematem. Nie dodawaj żadnych komentarzy ani tekstu poza obiektem JSON.`;
 
             const responseSchema = {
                 type: Type.OBJECT,
@@ -89,7 +107,9 @@ const App: React.FC = () => {
                             suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
                             risks: { type: Type.ARRAY, items: { type: Type.STRING } },
                             criticalErrors: { type: Type.ARRAY, items: { type: Type.STRING } }
-                        }
+                        },
+                         // Make analysis required if it is marketing data
+                        required: ["conclusions", "suggestions", "risks", "criticalErrors"]
                     },
                     reasoning: {
                         type: Type.STRING,
@@ -101,7 +121,7 @@ const App: React.FC = () => {
 
             const response: GenerateContentResponse = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
-                contents: prompt,
+                contents: { parts: [{text: prompt}, filePart] },
                 config: {
                     responseMimeType: "application/json",
                     responseSchema: responseSchema,
