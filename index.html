@@ -1,136 +1,251 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Marketing Report Analyzer</title>
     <style>
+        :root {
+            --primary-color: #4a90e2;
+            --primary-hover: #357abd;
+            --background-color: #f5f7fa;
+            --card-background: #ffffff;
+            --text-color: #3d4f60;
+            --light-text-color: #8a98a8;
+            --border-color: #e0e7f1;
+            --error-bg: #fdedee;
+            --error-text: #a94442;
+            --error-border: #f5c6cb;
+            --success-green: #28a745;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 20px;
-            background-color: #f4f7f9;
-            color: #333;
+            padding: 2rem;
+            background-color: var(--background-color);
+            color: var(--text-color);
             display: flex;
             justify-content: center;
             align-items: flex-start;
             min-height: 100vh;
         }
+
         #root {
-            background-color: #fff;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background-color: var(--card-background);
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
             width: 100%;
-            max-width: 800px;
+            max-width: 850px;
+            transition: all 0.3s ease;
         }
-        h1 {
-            color: #2c3e50;
+
+        header h1 {
+            color: var(--text-color);
             text-align: center;
-            margin-bottom: 25px;
+            margin: 0 0 2rem 0;
+            font-size: 2.25rem;
+            font-weight: 600;
         }
+
         .file-input-container {
             display: flex;
             flex-direction: column;
+            justify-content: center;
             align-items: center;
-            margin-bottom: 25px;
-            padding: 20px;
-            border: 2px dashed #007bff;
+            margin-bottom: 2rem;
+            padding: 2.5rem;
+            border: 2px dashed var(--border-color);
             border-radius: 8px;
-            background-color: #f8f9fa;
+            background-color: #fafbfc;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            text-align: center;
         }
+
         .file-input-container:hover {
-            background-color: #e9ecef;
+            background-color: #f5f7fa;
+            border-color: var(--primary-color);
         }
+
+        .file-input-icon {
+            width: 50px;
+            height: 50px;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
         input[type="file"] {
-            display: none; /* Hide default input */
+            display: none;
         }
+
         .file-input-label {
-            color: #007bff;
-            font-weight: bold;
-            cursor: pointer;
+            color: var(--primary-color);
+            font-weight: 500;
+            font-size: 1.1rem;
         }
+
         .file-name {
-            margin-top: 10px;
+            margin-top: 0.75rem;
             font-style: italic;
-            color: #555;
+            color: var(--light-text-color);
+            word-break: break-all;
         }
+        
+        .file-name.selected {
+            color: var(--success-green);
+            font-weight: 500;
+        }
+
         button {
-            background-color: #007bff;
+            background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 12px 20px;
-            border-radius: 5px;
-            font-size: 16px;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
             display: block;
-            margin: 20px auto 0;
+            margin: 0 auto;
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
         }
-        button:hover {
-            background-color: #0056b3;
+
+        button:hover:not(:disabled) {
+            background-color: var(--primary-hover);
+            box-shadow: 0 6px 16px rgba(74, 144, 226, 0.3);
         }
+
         button:disabled {
             background-color: #ccc;
             cursor: not-allowed;
+            box-shadow: none;
         }
-        .results-container {
-            margin-top: 30px;
-        }
-        .results-section {
-            background-color: #f8f9fa;
-            padding: 20px;
+        
+        .loading-container, .error-message {
+            text-align: center;
+            margin-top: 2rem;
+            padding: 1rem;
             border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #e0e0e0;
         }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background-color: var(--error-bg);
+            color: var(--error-text);
+            border: 1px solid var(--error-border);
+        }
+
+        .results-container {
+            margin-top: 2.5rem;
+            display: grid;
+            gap: 1.5rem;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @media (min-width: 768px) {
+            .results-container {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .results-section {
+            background-color: #fafbfc;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
         .results-section h2 {
-            color: #007bff;
+            color: var(--primary-color);
             margin-top: 0;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 5px;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+            font-size: 1.5rem;
+            font-weight: 600;
         }
+
         .results-section ul {
-            list-style-type: disc;
-            padding-left: 20px;
+            list-style-type: none;
+            padding-left: 0;
             margin: 0;
         }
+
         .results-section li {
-            margin-bottom: 8px;
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+            display: flex;
+            align-items: flex-start;
+        }
+        
+        .results-section li::before {
+            margin-right: 0.75rem;
+            font-size: 1.25rem;
             line-height: 1.6;
         }
-        .loading-indicator, .error-message {
-            text-align: center;
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 5px;
+
+        .results-section.insights li::before {
+            content: '💡';
         }
-        .loading-indicator {
-            color: #007bff;
-            font-weight: bold;
+        
+        .results-section.recommendations li::before {
+            content: '✅';
         }
-        .error-message {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+
         footer {
             text-align: center;
-            margin-top: 30px;
+            margin-top: 3rem;
             font-size: 0.9em;
-            color: #777;
+            color: var(--light-text-color);
+        }
+        
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
         }
     </style>
 <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.5.1",
-    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
-    "react": "https://esm.sh/react@^19.1.0",
-    "react/": "https://esm.sh/react@^19.1.0/"
+    "react-dom/": "https://esm.sh/react-dom@^18.2.0/",
+    "react": "https://esm.sh/react@^18.2.0",
+    "react/": "https://esm.sh/react@^18.2.0/"
   }
 }
 </script>
